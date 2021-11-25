@@ -166,10 +166,10 @@ bool pagedir_is_dirty(uint32_t *pd, const void *vpage)
   return pte != NULL && (*pte & PTE_D) != 0;
 }
 
-bool pagedir_is_writable(uint32_t *pagedirr, const void *vpage)
+bool pagedir_is_writable(uint32_t *pd, const void *vpage)
 {
-  uint32_t *pagetableentry = lookup_page(pagedirr, vpage, false);
-  return pagetableentry != NULL && (*pagetableentry & PTE_W) != 0;
+  uint32_t *pte = lookup_page(pd, vpage, false);
+  return pte != NULL && (*pte & PTE_W) != 0;
 }
 
 /* Set the dirty bit to DIRTY in the PTE for virtual page VPAGE
