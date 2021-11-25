@@ -25,7 +25,7 @@
 
 static thread_func start_process NO_RETURN;
 static bool load(struct args_struct *file_name_args, void (**eip)(void), void **esp);
-tid_t process_execute(const char *name_of_current_file)
+tid_t process_execute(const char *file_name)
 {
   char *only_fn;
   char *fn_copy;
@@ -35,28 +35,28 @@ tid_t process_execute(const char *name_of_current_file)
   tid_t threadID;
   struct args_struct *argument_names;
 
-  /* Make a copy of name_of_current_file.
+  /* Make a copy of file_name.
      Otherwise there's a race between the caller and load(). */
   argument_names = palloc_get_page(0);
   if (argument_names == NULL)
     return TID_ERROR;
 
-  fn_copy = malloc(sizeof(char) * (strlen(name_of_current_file) + 1));
+  fn_copy = malloc(sizeof(char) * (strlen(file_name) + 1));
   if (fn_copy == NULL)
   {
     palloc_free_page(argument_names);
     return TID_ERROR;
   }
 
-  strlcpy(fn_copy, name_of_current_file, strlen(name_of_current_file) + 1);
+  strlcpy(fn_copy, file_name, strlen(file_name) + 1);
 
   /* All arguments. */
   strlcpy(argument_names->file_args, fn_copy, strlen(fn_copy) + 1);
   only_fn = strtok_r(fn_copy, " ", &savepointer);
   /* Only filename. */
-  strlcpy(argument_names->name_of_current_file, only_fn, strlen(only_fn) + 1);
+  strlcpy(argument_names->file_name, only_fn, strlen(only_fn) + 1);
 
-  /* Create a new thread to execute name_of_current_file. */
+  /* Create a new thread to execute file_name. */
   threadID = thread_create(only_fn, PRI_DEFAULT,
                            start_process, argument_names);
   if (threadID == TID_ERROR)
@@ -152,7 +152,7 @@ int process_wait(tid_t childThreadID)
 
   sema_down(&chld->exit_sema);
   /* Save the exit status. */
-  exitstat = chld->exitstat;
+  exitstat = chld->exit_status;
   printf("%s: exit(%d)\n", chld->name, exitstat);
   list_remove(&chld->children_elem);
   sema_up(&chld->exit_status_read_sema);
@@ -165,7 +165,7 @@ void process_exit(void)
 {
   struct thread *currentThread = thread_current();
   struct thread *chld;
-  struct list *listOfChildren = &currentThread->listOfChildren;
+  struct list *listOfChildren = &currentThread->children_list;
   struct list_elem *childelement;
   uint32_t *currpagedirectory;
 
