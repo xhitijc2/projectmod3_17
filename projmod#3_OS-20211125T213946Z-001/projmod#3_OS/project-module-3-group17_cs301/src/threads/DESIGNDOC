@@ -1,0 +1,266 @@
+			+--------------------+
+			|         OS         |
+			| PROJECT 1: THREADS |
+			|   DESIGN DOCUMENT  |
+			+--------------------+
+
+---- GROUP ----
+
+Marco Maida <mmaida@mpi-sws.org> 416157
+Marco Perronet <perronet@mpi-sws.org> 416159
+
+---- PRELIMINARIES ----
+
+>> If you have any preliminary comments on your submission, notes for the
+>> TAs, or extra credit, please give them here.
+
+>> Please cite any offline or online sources you consulted while
+>> preparing your submission, other than the Pintos documentation, course
+>> text, lecture notes, and course staff.
+
+			     ALARM CLOCK
+			     ===========
+
+---- DATA STRUCTURES ----
+
+>> A1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+* In thread.h :
+
+struct thread_sleep_schedule
+  {
+    struct semaphore sleep_sema;
+    int64_t wakeup_time;
+    struct list_elem sleepelem;           /* List element for sleeping thread list. */
+  };
+
+Used to keep track of when a sleeping thread has to wake up.
+
+* In thread.c :
+
+static struct list sleeping_list;
+
+List containing sleeping thread schedules. Checked on each timer tick to
+wake up sleeping threads.
+
+---- ALGORITHMS ----
+
+>> A2: Briefly describe what happens in a call to timer_sleep(),
+>> including the effects of the timer interrupt handler.
+
+If the sleeping time is valid, thread_sleep() is called.
+This function creates a schedule and puts it in sleeping_list, which
+is ordered basing on wake-up times. The thread is subsequently blocked on
+its thread-specific semaphore (sleep_sema).
+All of this is performed with disabled interrupts.
+
+On the other hand, the timer interrupt retrieves schedules from the same 
+list and wakes up threads if needed.
+
+>> A3: What steps are taken to minimize the amount of time spent in
+>> the timer interrupt handler?
+
+Since interrupts cannot sleep, we need to disable them when we access 
+the sleeping list to avoid race conditions. However, it is possible to 
+minimize the damage: we can assume that sleep requests will be less 
+than timer ticks, so we can keep the sleeping list ordered. This way, 
+the complexity of insertions - performed on sleep requests - grows, 
+while the complexity of retrievals - performed on each timer tick - 
+is reduced.
+
+Another thing to note is that the elements of sleeping_list 
+(thread_sleep_schedule) live entirely on the stacks of the process.
+This avoids calls to the memory manager and lowers the execution time.
+
+---- SYNCHRONIZATION ----
+
+>> A4: How are race conditions avoided when multiple threads call
+>> timer_sleep() simultaneously?
+Since we need to disable interrupts to avoid race conditions with the
+timer interrupts, we get this for free.
+
+>> A5: How are race conditions avoided when a timer interrupt occurs
+>> during a call to timer_sleep()?
+Interrupts are disabled when accessing sleeping_list.
+
+---- RATIONALE ----
+
+>> A6: Why did you choose this design?  In what ways is it superior to
+>> another design you considered?
+
+A lot of this is already explained in [A3]. We think that the main 
+decision to take for this implementation is how to keep track of 
+the sleeping threads. In our case, we decided to use the double linked
+list provided in Pintos, and keep the elements ordered by wake-up time.
+
+Let's consider first why we decided to add the thread_sleep_schedule 
+struct.
+In order to keep track of the sleep time, one tempting solution is to 
+just add two more variables (the wake-up time and the list element 
+linker) inside the thread struct. This works, but doing this we bloat 
+one of the most important structs of Pintos for no reason, since we will
+have no other benefit (except for having a new, dirty way to know if a 
+thread is sleeping). While a thread is sleeping we know
+for sure that no stack variables will be deallocated; we can therefore 
+allocate on the stack a thread_sleep_schedule struct, then call the sleep
+function and pass that as reference. The struct will be then saved inside 
+sleeping_list. This way, the set of sleeping schedules of threads entirely
+lives on their own stacks. This avoids both the use of dynamic allocation 
+and recycles the unused space of the stacks.
+
+As discussed in [A3], sleeping_list is ordered. This reduces the retrievals
+time, but increases the insertions. Of course, this is a choice: if threads 
+happen to sleep very often but for very short periods of time, this may even 
+be counter-productive. To further increase the performance of the insertions,
+we traverse the sleeping_list backwards, under the assumption that threads
+that are already sleeping will wake-up earlier than the one that is going
+to sleep in that moment. This way, the tick function can just iteratively
+remove the first element of the list until all threads that needed to wake 
+up are unblocked.
+
+
+
+    		     PROD/CONS
+	  		     =========
+
+---- SYNCHRONIZATION ----
+
+>> B1: How does your solution guarantee that consumers will hold until
+>> there is something to consume in the buffer?
+
+Consumers wait on the not_empty condition variable, which is checked in a loop because
+the implementation in Pintos follows Mesa semantics. The buffer is empty
+when both the producers and the consumers point at the same cell.
+
+>> B2: How does your solution guarantee that producers will hold until
+>> there is some free space in the buffer?
+
+It is symmetric to the case with consumers. The buffer is full when the consumer's
+position is one cell before the producer's, in this case the producers wrapped around
+the buffer.
+
+>> B3: How does your solution preserve a FIFO semantics i.e., the first
+>> character produced will be the first to be consumed?
+
+The buffer is circular, meaning that the producers will always follow the exact same path taken by the consumers. The order in which the characters were written is preserved when reading.
+
+---- RATIONALE ----
+
+>> B4: Give an intuition for why your program preserves safety.
+
+The buffer is protected by a lock. Because producers and consumers take turns on the
+buffer, this is enough to preserve integrity of the data.
+The way the checks for emptiness/fullness are set, illegal read and writes will never occur.
+
+>> B5: Why did you choose this design? Did you consider other design
+>> alternatives? In what ways is it superior to another design you considered?
+
+Another possible approach for the buffer implementation is to use two lists
+as a pool of empty and full buffers, respectively. In this case: 
+(1) The mutual exclusion occurs for each one of the two lists, possibly with
+two locks, rather than on one data structure shared by both producers and consumers.
+(2) To check wether the buffer is full/empty it's enough to check the number of
+elements in the two lists.
+While having two locks on two lists generates less lock contention, the implementation 
+with a shared array and two pointers is really simple and straightfoward.
+
+			     NARROW BRIDGE
+			     =============
+
+---- SYNCHRONIZATION ----
+
+>> C1: How does your solution guarantee that no more that 3 vehicles
+>> are crossing the bridge in the same direction?
+
+The global variable bridge_count keep tracks of how many vehicles are on 
+the bridge. The access to this variable is regulated via the mutex semaphore
+and it is checked in ArriveBridge().
+
+>> C2: What prevents vehicles from opposite directions from crossing the
+>> bridge simultaneously?
+
+The global variable bridge_direction keep tracks of the direction of the
+vehicles. This variable makes sense when there is at least one car on the
+bridge. The access to this variable is regulated via the mutex semaphore
+and it is checked in ArriveBridge(). 
+
+>> C3: How does your solution grant priority to emergency vehicles over
+>> the queue of vehicles ahead in the same direction?
+
+When ArriveBridge() is executed, each vehicle determines the state of the
+bridge and waiters.
+Every emergency vehicle checks if the bridge is available (not currently
+full or having traffic in the other direction). If it is so, it always 
+proceeds. On the other hand, normal vehicles check whether the bridge is 
+available and also that there are no emergency vehicles waiting. 
+If there is at least one emergency vehicle waiting, normal vehicles always
+halt.
+
+>> C4: How do you guarantee that despite having priority, emergency vehicles
+>> do not start crossing the bridge while there are still vehicles crossing
+>> it in the oposite direction?
+
+As stated in [C3], also emergency vehicle check if the bridge is available
+before proceeding.
+
+>> C5: Explain with examples why your solution does not preserve neither
+>> fairness nor freedom from starvation, other than what has been indicated
+>> for emergency vehicles.
+
+This solution may produce starvation if vehicles keep coming from 
+the same side. When this happens, there can be an infinite flux of vehicle
+crossing the bridge always in one direction. A normal vehicles flux can be 
+stopped by the arrival of an emergency vehicle on the other side, but if there
+is at least one emergency vehicle in the flux, there could be an infinite delay
+for the others.
+This solution is not fair because, in case of empty bridge, waiting vehicles on
+the left will always pass first (of course, still respecting the emergency 
+policy).
+
+---- RATIONALE ----
+
+>> C6: Why did you choose this design? Did you consider other design
+>> alternatives? In what ways is it superior to another design you considered?
+
+Our design uses one mutex semaphore, one counting semaphore for each vehicle 
+type (left/right, normal/emergency), four counters for waiting vehicles, 
+and two variables for the state of the bridge. 
+We could have solved this problem with less semaphores (having just a mutex 
+and one for the waiting vehicles), but with four semaphores we can wake up 
+exactly the type of vehicle we want, reducing the overhead.
+Note that the four counters correspond to the number of vehicles in the queue
+of each semaphore. We decided to use four variables just for clarity.
+
+			   SURVEY QUESTIONS
+			   ================
+
+Answering these questions is optional, but it will help us improve the
+course in future semesters.  Feel free to tell us anything you
+want--these questions are just to spur your thoughts.  You may also
+choose to respond anonymously in the course evaluations at the end of
+the semester.
+
+>> In your opinion, was this assignment, or any one of the three problems
+>> in it, too easy or too hard?  Did it take too long or too little time?
+
+They were ok. We spent a 2-3 of hours on each one (considering the
+questionnaire).
+
+>> Did you find that working on a particular part of the assignment gave
+>> you greater insight into some aspect of OS design?
+
+Definitely the first one.
+
+>> Is there some particular fact or hint we should give students in
+>> future semesters to help them solve the problems?  Conversely, did you
+>> find any of our guidance to be misleading?
+
+We had some doubts, but reading the assignment again solved them.
+(This answer makes sense only if we executed the assignment correctly).
+
+>> Do you have any suggestions for the TAs to more effectively assist
+>> students, either for future semesters or the remaining projects?
+
+>> Any other comments?
