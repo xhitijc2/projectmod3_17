@@ -129,7 +129,7 @@ int process_wait(tid_t childThreadID)
   struct thread *currentThread = thread_current();
   struct thread *chld = NULL;
   struct list_elem *chhild_elemen;
-  struct list *list_of_children = &currentThread->list_of_children;
+  struct list *list_of_children = &currentThread->children_list;
   bool result = false;
   int exitstat;
 
