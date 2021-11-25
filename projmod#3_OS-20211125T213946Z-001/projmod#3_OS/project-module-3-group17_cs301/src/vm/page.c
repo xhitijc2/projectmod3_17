@@ -180,7 +180,7 @@ struct pt_suppl_entry * pt_suppl_get (struct hash *tbl, void *pg)
 {
   struct pt_suppl_entry entry;
   entry.vaddr = pg;
-  struct hash_elem *element = hash_find (table, &entry.elem);
+  struct hash_elem *element = hash_find (tbl, &entry.elem);
 
   if(element == NULL)
     return NULL;
@@ -198,7 +198,7 @@ void pt_suppl_flush_mmf (struct pt_suppl_entry *entry)
       struct pt_suppl_file_info *mmfile = entry->file_info;
       ASSERT (mmfile != NULL);
 
-      file_seek (mmfile->file, mmfile->ofs);
+      file_seek (mmfile->file, mmfile->offset);
       file_write (mmfile->file, entry->vaddr, mmfile->read_bytes);
     }
 }
@@ -289,7 +289,7 @@ bool pt_suppl_page_in (struct pt_suppl_entry *entry)
         memset (frm, 0, inf->zero_bytes);
       }
       if (read)
-        pgdir = pagedir_set_page (thread_current ()->pagedir,entry->vaddr, frm, info->writable);
+        pgdir = pagedir_set_page (thread_current ()->pagedir,entry->vaddr, frm, inf->writable);
 
       if(pgdir)
         {
@@ -335,10 +335,7 @@ bool pt_suppl_check_and_grow_stack (const void *vaddress, const void *esp)
 
   return is_stack_growth;
 }
-void pt_suppl_free (struct hash *tbl) 
-{
-  hash_destroy (tbl, pt_suppl_free_entry);
-}
+
 
 
 
@@ -365,6 +362,10 @@ static void pt_suppl_free_entry (struct hash_elem *helem, void *aux UNUSED)
   free (entry);
 }
 
+void pt_suppl_free (struct hash *tbl) 
+{
+  hash_destroy (tbl, pt_suppl_free_entry);
+}
 bool pt_suppl_less (const struct hash_elem *helem1, const struct hash_elem *helem2,void *aux UNUSED)
 {
   struct pt_suppl_entry *e1,*e2;

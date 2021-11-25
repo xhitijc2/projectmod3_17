@@ -178,7 +178,7 @@ bool page_out_evicted_frame (struct frame_entry *fe)
     }
   else
     {
-      PANIC ("STATUS of page %p of %d is %d\n", pt->vaddr, f->owner->tid, pt->status);
+      PANIC ("STATUS of page %p of %d is %d\n", pt->vaddr, fe->owner->tid, pt->status);
     }
 
   return true;
